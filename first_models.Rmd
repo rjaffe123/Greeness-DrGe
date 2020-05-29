@@ -1,0 +1,45 @@
+---
+title: "Untitled"
+author: "Rachael Jaffe"
+date: "27/05/2020"
+output: html_document
+---
+
+# Set Up
+```{r libraries, echo=FALSE, message = FALSE}
+library(tidyverse)
+library(stringr)
+```
+
+## Loading data
+```{r}
+file_directory <- "/Users/rachaeljaffe/Greeness-DrGe/Final_tt_tables"
+files <- list.files(path = file_directory, pattern = "*.csv", full.names = FALSE)
+merge_all <- data.frame()
+for (file in files){
+  data <- read.csv(paste(file_directory, file, sep = "/"))
+  year <- strsplit(name, "_")[[1]][2]
+  year <- gsub("\\..*", "", year)
+  colskeep <- c(1, 8:19)
+  data1 <- data[,colskeep]
+  data1 <- data1 %>% mutate(year = year)
+  data1[,1] <- as.character(data1[,1])
+  colnames(data1) <- ("postal_code", "")
+  data1 <- data1 %>% mutate(North_South = ifelse(str_sub(data[,1], 1,1) == "P", 'North', "South"))
+  data2 <- data1 %>% gather(mode_type, travel_time, wf:dc)
+  data2 <- data2 %>% mutate(mode = case_when(
+    str_sub(mode_type, 1,1) == "w" ~ "walking",
+    str_sub(mode_type, 1,1) == "b" ~ "biking",
+    str_sub(mode_type, 1,1) == "d" ~ "driving"))
+  data2 <- data2 %>% mutate(green_type = case_when(
+    str_sub(mode_type, 2,2) == "f" ~ "forest",
+    str_sub(mode_type, 2,2) == "p" ~ "park",
+    str_sub(mode_type, 2,2) == "c" ~ "cemetary",
+    str_sub(mode_type, 2,2) == "l" ~ "limited access"))
+  data2 <- data2 %>% select(-mode_type)
+  data2 <- data2 %>% filter(!is.na(travel_time))
+  merge_all <- rbind(merge_all, data2)
+}
+```
+
+
