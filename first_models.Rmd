@@ -3,8 +3,8 @@ title: "Travel Time Analysis"
 author: "Rachael Jaffe"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 # Set Up
@@ -14,10 +14,12 @@ library(stringr)
 ```
 
 ## Loading data
-```{r, cache=TRUE}
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
 file_directory <- "/Users/rachaeljaffe/Greeness-DrGe/Final_tables"
 files <- list.files(path = file_directory, pattern = "*.csv", full.names = FALSE)
 merge_all <- data.frame(matrix(ncol=6, nrow=0))
+deleted_numbers <- data.frame(matrix(ncol=2, nrow=0))
+colnames(deleted_numbers) <- c("year", "number_na")
 for (file in files){
   data <- read.csv(paste(file_directory, file, sep = "/"))
   year <- strsplit(file, "_")[[1]][2]
@@ -38,16 +40,23 @@ for (file in files){
     str_sub(mode_type, 2,2) == "c" ~ "cemetary",
     str_sub(mode_type, 2,2) == "l" ~ "limited access"))
   data2 <- data2 %>% select(-mode_type)
+  value <- sum(is.na(data2$travel_time))
+  temp <- c(year, value)
+  temp <- as.data.frame(t(temp))
+  colnames(temp) <- c("year", "number_na")
+  deleted_numbers <- bind_rows(deleted_numbers, temp)
   data2 <- data2 %>% filter(!is.na(travel_time))
+
   merge_all <- merge_all %>% bind_rows(data2)
 }
 merge_all <- merge_all %>% select(-X1, -X2, -X3, -X4, -X5, -X6)
 ```
 
+
 ## Add other variables based on Postal Code
 
 
-```{r}
+```{r, cache=TRUE}
 merge_all2 <- merge_all
 merge_all2 <- merge_all2 %>% mutate(North_South = ifelse(str_sub(postal_code, 1,1) == "P", 'North', "South")) %>% mutate(North_South = as.factor(North_South))
 merge_all2 <- merge_all2 %>% mutate(year = as.factor(year), mode = as.factor(mode), green_type = as.factor(green_type))
@@ -61,6 +70,10 @@ merge_all2 <- merge_all2 %>%  mutate(urban_rural = case_when
 merge_all2 <- merge_all2 %>% replace(is.na(.), "Urban")
 merge_all2 <- merge_all2 %>% mutate(urban_rural = as.factor(urban_rural))
 ```
+Here is what the data looks like:
+```{r}
+head(merge_all2)
+```
 
 ## Model
 
@@ -69,13 +82,21 @@ Due to the large sample size, we will use ANOVA to model: \newline
 $$y_i = \beta_0 + \sum_{n=1}^{14} \beta_1X_n +  \sum_{k=1}^{2} \beta_2X_k  + \sum_{r=1}^{3} \beta_3X_r + \beta_4X_4 + \beta_5X_5 $$
 Where each beta is equal to 1 given the correct year (n), mode (k), greenness type (r), north/south or rural/urban. 
 
-```{r}
+```{r, cache=TRUE}
 reg2 = lm(travel_time ~ year + mode + green_type + urban_rural + North_South, data = merge_all2)
 summary(reg2)
 ```
 
-(Reference group is year = 2005, mode = biking, green_type = cemetary, north and rural. For that group the average travel time is approximately 43 minutes to the nearest greenness.) \newline
+(Reference group is year = 2005, mode = biking, green_type = cemetary, north and rural. The average travel time (in minutes) is the intercept value) \newline
 
 Basically, we see that there is an average decrease to the nearest greenness as the years increase (keeping biking, cemetary, north and rural the same). 
+
+Here is a table summarizing what is going on:
+```{r}
+table <- summarise(group_by(merge_all2, year, mode, green_type), mean=mean(travel_time, na.rm = TRUE), 
+                   sd=sd(travel_time))
+rmarkdown::paged_table(table)
+```
+
 
 

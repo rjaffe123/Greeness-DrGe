@@ -1,0 +1,66 @@
+---
+title: "feature and road data"
+author: "Rachael Jaffe"
+date: "30/05/2020"
+output: pdf_document
+---
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+file_directory <- "/Users/rachaeljaffe/Greeness-DrGe/freature_freq"
+files <- list.files(path = file_directory, pattern = "*.csv", full.names = FALSE)
+merge_feature <- data.frame(matrix(ncol=3, nrow=0))
+for (file in files){
+  data <- read.csv(paste(file_directory, file, sep = "/"))
+  year <- strsplit(file, "_")[[1]][2]
+  year <- gsub("\\..*", "", year)
+  data <- data %>% mutate(year = year)
+  merge_feature <- merge_feature %>% bind_rows(data)
+}
+merge_feature <- merge_feature %>% select(-X1, -X2, -X3)
+merge_feature <- merge_feature %>% filter(!is.na(FREQUENCY))
+merge_feature <- merge_feature %>% mutate(TYPE = tolower(TYPE))
+merge_feature <- merge_feature %>% mutate(TYPE = as.factor(TYPE))
+#merge_feature <- merge_feature %>% mutate(year = as.Date(as.character(year), format = "%Y", origin = "1970-01-01"))
+```
+
+```{r, echo=FALSE}
+time_series <- merge_feature %>% ggplot(aes(x=year, y=FREQUENCY))+
+  geom_point(aes(color = TYPE)) + 
+  geom_line(aes(group= TYPE, color = TYPE))+
+  ggtitle("Frequency of greenness category over time")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+time_series
+```
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+file_directory <- "/Users/rachaeljaffe/Greeness-DrGe/road_data"
+files <- list.files(path = file_directory, pattern = "*.csv", full.names = FALSE)
+merge_road <- data.frame(matrix(ncol=3, nrow=0))
+for (file in files){
+  data <- read.csv(paste(file_directory, file, sep = "/"))
+  year <- strsplit(file, "_")[[1]][3]
+  year <- gsub("\\..*", "", year)
+  data <- data %>% mutate(year = year)
+  merge_road <- merge_road %>% bind_rows(data)
+}
+merge_road <- merge_road %>% filter(ROAD_CLASS!=" ")
+merge_road <- merge_road %>% filter(ROAD_ELEME== 'ROAD ELEMENT')
+merge_road <- merge_road %>% select(ROAD_CLASS, FREQUENCY, year)
+merge_road <- merge_road %>% mutate(ROAD_CLASS = as.factor(ROAD_CLASS))
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+time_series_road <- merge_road %>% ggplot(aes(x=year, y=FREQUENCY))+
+  geom_point(aes(color = ROAD_CLASS)) + 
+  geom_line(aes(group= ROAD_CLASS, color = ROAD_CLASS))+
+  ggtitle("Frequency of road category over time") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+time_series_road
+```
+
+
