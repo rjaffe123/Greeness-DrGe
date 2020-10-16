@@ -6,7 +6,8 @@ library(sparr)
 library(rgdal)
 
 ## FOR TORONTO
-
+# 1 <- case (can access within time limit)
+# 0 <- control (cannot access within the time limit)
 
 # tt_total <- read.csv("tt_total.csv") 
 # tt_log <- tt_total %>% mutate(case_control = ifelse(is.na(travel_time),0,1))

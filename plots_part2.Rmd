@@ -1,0 +1,292 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+  header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{wrapfig}
+  - \usepackage{float}
+  - \usepackage{colortbl}
+  - \usepackage{pdflscape}
+  - \usepackage{tabu}
+  - \usepackage{threeparttable}
+  - \usepackage{threeparttablex}
+  - \usepackage[normalem]{ulem}
+  - \usepackage{makecell}
+  - \usepackage{xcolor}
+---
+
+```{r, echo=FALSE, cache=TRUE}
+file_directory <- "/Users/rachaeljaffe/Greeness-DrGe/Final_tables_selectyears"
+tt_2005 <- read.csv(paste0(file_directory, "/tt_2005.csv"))
+tt_2010 <- read.csv(paste0(file_directory, "/tt_2010.csv"))
+tt_2015 <- read.csv(paste0(file_directory, "/tt_2015.csv"))
+tt_2019 <- read.csv(paste0(file_directory, "/tt_2019.csv"))
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+library(tidyverse)
+tt_2005 <- tt_2005 %>% select(-c(X, X.1, X.2, X.3, X.4, X.5, X.6, X.7, X.8))
+tt_2010 <- tt_2010 %>% rename(postalcode = POSTALCODE10)
+tt_2015 <- tt_2015 %>% rename(postalcode = POSTALCODE)
+tt_2019 <- tt_2019 %>% rename(postalcode = postalcode19)
+
+## filter out uncommon 
+intersect <- Reduce(intersect, list(tt_2005$postalcode, tt_2010$postalcode, tt_2015$postalcode, tt_2019$postalcode))
+tt_2010 <- tt_2010 %>% filter(postalcode %in% intersect)
+tt_2005 <- tt_2005 %>% filter(postalcode %in% intersect)
+tt_2015 <- tt_2015 %>% filter(postalcode %in% intersect)
+tt_2019 <- tt_2019 %>% filter(postalcode %in% intersect)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+tt_2005_long <- tt_2005 %>% gather(mode_type, travel_time, 8:19)
+tt_2010_long <- tt_2010 %>% gather(mode_type, travel_time, 8:19)
+tt_2015_long <- tt_2015 %>% gather(mode_type, travel_time, 8:19)
+tt_2019_long <- tt_2019 %>% gather(mode_type, travel_time, 8:19)
+
+tt_2010_long <- tt_2010_long%>% rename(longitude = LONGITUDE_10, latitude = LATITUDE_10, key_commun = key_community)
+tt_2015_long <- tt_2015_long%>% rename(longitude = LONGITUDE_, latitude = LATITUDE_1)
+tt_2019_long <- tt_2019_long%>% rename(key_commun = key_community)
+
+tt_2005_long <- tt_2005_long %>% mutate(year = 2005)
+tt_2010_long <- tt_2010_long %>% mutate(year = 2010)
+tt_2015_long <- tt_2015_long %>% mutate(year = 2015)
+tt_2019_long <- tt_2019_long %>% mutate(year = 2019)
+
+
+tt_total <- bind_rows(tt_2005_long, tt_2010_long)
+tt_total <- bind_rows(tt_total,tt_2015_long)
+tt_total <- bind_rows(tt_total,tt_2019_long)
+
+tt_total <- tt_total %>% mutate(mode = case_when(
+    str_sub(mode_type, 1,1) == "w" ~ "walking",
+    str_sub(mode_type, 1,1) == "b" ~ "biking",
+    str_sub(mode_type, 1,1) == "d" ~ "driving"))
+tt_total <- tt_total %>% mutate(green_type = case_when(
+    str_sub(mode_type, 2,2) == "f" ~ "forest",
+    str_sub(mode_type, 2,2) == "p" ~ "park",
+    str_sub(mode_type, 2,2) == "c" ~ "cemetary",
+    str_sub(mode_type, 2,2) == "l" ~ "limited access"))
+tt_total <- tt_total %>% select(-mode_type)
+```
+
+```{r, echo=FALSE}
+#remove NA values
+tt_total_no_na <- tt_total %>% filter(!is.na(travel_time))
+tt_total_no_na <- tt_total_no_na %>% mutate(mode=ifelse(mode=="biking", "bicycling", mode))
+
+```
+
+```{r, include=FALSE}
+
+pdf("/Users/rachaeljaffe/Greeness-DrGe/tt_per_modeyear_updated_nona.pdf", width = 10, height = 8)
+plots <- tt_total_no_na %>% ggplot( aes(x=travel_time))+
+  geom_histogram(binwidth = 20) +
+  facet_grid(mode ~ year)+
+  labs(title= "Travel time for each year by mode",
+       subtitle = "NA values for travel time are removed.") +
+  theme(plot.subtitle = element_text(face = "italic"))+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  xlab("Travel time (minutes)")
+plots
+dev.off()
+```
+
+```{r get cities, echo=FALSE}
+hamilton <- tt_total %>% filter(CDNAME == "Hamilton" & mode == "driving")
+waterloo <- tt_total %>% filter(CDNAME == "Waterloo" & mode == "driving")
+ottawa <- tt_total %>% filter(CDNAME == "Ottawa" & mode == "driving")
+toronto <- tt_total %>% filter(CDNAME == "Toronto" & mode == "driving")
+```
+
+```{r 2019, echo=FALSE}
+## Park 
+toronto_2019_rural_park <- toronto %>% filter(year == 2019 & substring(postalcode, 2,2) == 0 & green_type == "park")
+ottawa_2019_rural_park <- ottawa %>% filter(year == 2019 & substring(postalcode, 2,2) == 0  & green_type == "park")
+hamilton_2019_rural_park <- hamilton %>% filter(year == 2019 & substring(postalcode, 2,2) == 0  & green_type == "park")
+waterloo_2019_rural_park <- waterloo %>% filter(year == 2019 & substring(postalcode, 2,2) == 0  & green_type == "park")
+
+toronto_2019_urban_park <- toronto %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "park")
+ottawa_2019_urban_park <- ottawa %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "park")
+hamilton_2019_urban_park <- hamilton %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "park")
+waterloo_2019_urban_park <- waterloo %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "park")
+
+##Forest
+toronto_2019_rural_forest <- toronto %>% filter(year == 2019 & substring(postalcode, 2,2) == 0 & green_type == "forest")
+ottawa_2019_rural_forest <- ottawa %>% filter(year == 2019 & substring(postalcode, 2,2) == 0  & green_type == "forest")
+hamilton_2019_rural_forest <- hamilton %>% filter(year == 2019 & substring(postalcode, 2,2) == 0  & green_type == "forest")
+waterloo_2019_rural_forest <- waterloo %>% filter(year == 2019 & substring(postalcode, 2,2) == 0  & green_type == "forest")
+
+toronto_2019_urban_forest <- toronto %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+ottawa_2019_urban_forest <- ottawa %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+hamilton_2019_urban_forest <- hamilton %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+waterloo_2019_urban_forest <- waterloo %>% filter(year == 2019 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+```
+
+```{r 2005, echo=FALSE}
+## Park 
+toronto_2005_rural_park <- toronto %>% filter(year == 2005 & substring(postalcode, 2,2) == 0 & green_type == "park")
+ottawa_2005_rural_park <- ottawa %>% filter(year == 2005 & substring(postalcode, 2,2) == 0  & green_type == "park")
+hamilton_2005_rural_park <- hamilton %>% filter(year == 2005 & substring(postalcode, 2,2) == 0  & green_type == "park")
+waterloo_2005_rural_park <- waterloo %>% filter(year == 2005 & substring(postalcode, 2,2) == 0  & green_type == "park")
+
+toronto_2005_urban_park <- toronto %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "park")
+ottawa_2005_urban_park <- ottawa %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "park")
+hamilton_2005_urban_park <- hamilton %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "park")
+waterloo_2005_urban_park <- waterloo %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "park")
+
+##Forest
+toronto_2005_rural_forest <- toronto %>% filter(year == 2005 & substring(postalcode, 2,2) == 0 & green_type == "forest")
+ottawa_2005_rural_forest <- ottawa %>% filter(year == 2005 & substring(postalcode, 2,2) == 0  & green_type == "forest")
+hamilton_2005_rural_forest <- hamilton %>% filter(year == 2005 & substring(postalcode, 2,2) == 0  & green_type == "forest")
+waterloo_2005_rural_forest <- waterloo %>% filter(year == 2005 & substring(postalcode, 2,2) == 0  & green_type == "forest")
+
+toronto_2005_urban_forest <- toronto %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+ottawa_2005_urban_forest <- ottawa %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+hamilton_2005_urban_forest <- hamilton %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+waterloo_2005_urban_forest <- waterloo %>% filter(year == 2005 & substring(postalcode, 2,2) != 0  & green_type == "forest")
+```
+
+```{r park medians and IQR, echo=FALSE}
+### 2005
+##median
+t_05_u_p_m <- round(median(toronto_2005_urban_park$travel_time, na.rm = TRUE),1)
+t_05_r_p_m <- round(median(toronto_2005_rural_park$travel_time, na.rm = TRUE),1)
+o_05_u_p_m <- round(median(ottawa_2005_urban_park$travel_time, na.rm = TRUE),1)
+o_05_r_p_m <- round(median(ottawa_2005_rural_park$travel_time, na.rm = TRUE),1)
+h_05_u_p_m <- round(median(hamilton_2005_urban_park$travel_time, na.rm = TRUE),1)
+h_05_r_p_m <- round(median(hamilton_2005_rural_park$travel_time, na.rm = TRUE),1)
+w_05_u_p_m <- round(median(waterloo_2005_urban_park$travel_time, na.rm = TRUE),1)
+w_05_r_p_m <- round(median(waterloo_2005_rural_park$travel_time, na.rm = TRUE),1)
+##IQR
+t_05_u_p_iqr <- round(IQR(toronto_2005_urban_park$travel_time, na.rm = TRUE),1)
+t_05_r_p_iqr <- round(IQR(toronto_2005_rural_park$travel_time, na.rm = TRUE),1)
+o_05_u_p_iqr <- round(IQR(ottawa_2005_urban_park$travel_time, na.rm = TRUE),1)
+o_05_r_p_iqr <- round(IQR(ottawa_2005_rural_park$travel_time, na.rm = TRUE),1)
+h_05_u_p_iqr <- round(IQR(hamilton_2005_urban_park$travel_time, na.rm = TRUE),1)
+h_05_r_p_iqr <- round(IQR(hamilton_2005_rural_park$travel_time, na.rm = TRUE),1)
+w_05_u_p_iqr <- round(IQR(waterloo_2005_urban_park$travel_time, na.rm = TRUE),1)
+w_05_r_p_iqr <- round(IQR(waterloo_2005_rural_park$travel_time, na.rm = TRUE),1)
+
+
+### 2019
+##median
+t_19_u_p_m <- round(median(toronto_2019_urban_park$travel_time, na.rm = TRUE),1)
+t_19_r_p_m <- round(median(toronto_2019_rural_park$travel_time, na.rm = TRUE),1)
+o_19_u_p_m <- round(median(ottawa_2019_urban_park$travel_time, na.rm = TRUE),1)
+o_19_r_p_m <- round(median(ottawa_2019_rural_park$travel_time, na.rm = TRUE),1)
+h_19_u_p_m <- round(median(hamilton_2019_urban_park$travel_time, na.rm = TRUE),1)
+h_19_r_p_m <- round(median(hamilton_2019_rural_park$travel_time, na.rm = TRUE),1)
+w_19_u_p_m <- round(median(waterloo_2019_urban_park$travel_time, na.rm = TRUE),1)
+w_19_r_p_m <- round(median(waterloo_2019_rural_park$travel_time, na.rm = TRUE),1)
+##IQR
+t_19_u_p_iqr <- round(IQR(toronto_2019_urban_park$travel_time, na.rm = TRUE),1)
+t_19_r_p_iqr<- round(IQR(toronto_2019_rural_park$travel_time, na.rm = TRUE),1)
+o_19_u_p_iqr <- round(IQR(ottawa_2019_urban_park$travel_time, na.rm = TRUE),1)
+o_19_r_p_iqr <- round(IQR(ottawa_2019_rural_park$travel_time, na.rm = TRUE),1)
+h_19_u_p_iqr <- round(IQR(hamilton_2019_urban_park$travel_time, na.rm = TRUE),1)
+h_19_r_p_iqr <- round(IQR(hamilton_2019_rural_park$travel_time, na.rm = TRUE),1)
+w_19_u_p_iqr <- round(IQR(waterloo_2019_urban_park$travel_time, na.rm = TRUE),1)
+w_19_r_p_iqr <- round(IQR(waterloo_2019_rural_park$travel_time, na.rm = TRUE),1)
+```
+
+```{r forest medians and IQR, echo=FALSE}
+### 2005
+##median
+t_05_u_f_m <- round(median(toronto_2005_urban_forest$travel_time, na.rm = TRUE),1)
+t_05_r_f_m <- round(median(toronto_2005_rural_forest$travel_time, na.rm = TRUE),1)
+o_05_u_f_m <- round(median(ottawa_2005_urban_forest$travel_time, na.rm = TRUE),1)
+o_05_r_f_m <- round(median(ottawa_2005_rural_forest$travel_time, na.rm = TRUE),1)
+h_05_u_f_m <- round(median(hamilton_2005_urban_forest$travel_time, na.rm = TRUE),1)
+h_05_r_f_m <- round(median(hamilton_2005_rural_forest$travel_time, na.rm = TRUE),1)
+w_05_u_f_m <- round(median(waterloo_2005_urban_forest$travel_time, na.rm = TRUE),1)
+w_05_r_f_m <- round(median(waterloo_2005_rural_forest$travel_time, na.rm = TRUE),1)
+##IQR
+t_05_u_f_iqr <- round(IQR(toronto_2005_urban_forest$travel_time, na.rm = TRUE),1)
+t_05_r_f_iqr <- round(IQR(toronto_2005_rural_forest$travel_time, na.rm = TRUE),1)
+o_05_u_f_iqr <- round(IQR(ottawa_2005_urban_forest$travel_time, na.rm = TRUE),1)
+o_05_r_f_iqr <- round(IQR(ottawa_2005_rural_forest$travel_time, na.rm = TRUE),1)
+h_05_u_f_iqr <- round(IQR(hamilton_2005_urban_forest$travel_time, na.rm = TRUE),1)
+h_05_r_f_iqr <- round(IQR(hamilton_2005_rural_forest$travel_time, na.rm = TRUE),1)
+w_05_u_f_iqr <- round(IQR(waterloo_2005_urban_forest$travel_time, na.rm = TRUE),1)
+w_05_r_f_iqr <- round(IQR(waterloo_2005_rural_forest$travel_time, na.rm = TRUE),1)
+
+
+### 2019
+##median
+t_19_u_f_m <- round(median(toronto_2019_urban_forest$travel_time, na.rm = TRUE),1)
+t_19_r_f_m <- round(median(toronto_2019_rural_forest$travel_time, na.rm = TRUE),1)
+o_19_u_f_m <- round(median(ottawa_2019_urban_forest$travel_time, na.rm = TRUE),1)
+o_19_r_f_m <- round(median(ottawa_2019_rural_forest$travel_time, na.rm = TRUE),1)
+h_19_u_f_m <- round(median(hamilton_2019_urban_forest$travel_time, na.rm = TRUE),1)
+h_19_r_f_m <- round(median(hamilton_2019_rural_forest$travel_time, na.rm = TRUE),1)
+w_19_u_f_m <- round(median(waterloo_2019_urban_forest$travel_time, na.rm = TRUE),1)
+w_19_r_f_m <- round(median(waterloo_2019_rural_forest$travel_time, na.rm = TRUE),1)
+##IQR
+t_19_u_f_iqr <- round(IQR(toronto_2019_urban_forest$travel_time, na.rm = TRUE),1)
+t_19_r_f_iqr<- round(IQR(toronto_2019_rural_forest$travel_time, na.rm = TRUE),1)
+o_19_u_f_iqr <- round(IQR(ottawa_2019_urban_forest$travel_time, na.rm = TRUE),1)
+o_19_r_f_iqr <- round(IQR(ottawa_2019_rural_forest$travel_time, na.rm = TRUE),1)
+h_19_u_f_iqr <- round(IQR(hamilton_2019_urban_forest$travel_time, na.rm = TRUE),1)
+h_19_r_f_iqr <- round(IQR(hamilton_2019_rural_forest$travel_time, na.rm = TRUE),1)
+w_19_u_f_iqr <- round(IQR(waterloo_2019_urban_forest$travel_time, na.rm = TRUE),1)
+w_19_r_f_iqr <- round(IQR(waterloo_2019_rural_forest$travel_time, na.rm = TRUE),1)
+```
+
+```{r create table, echo=FALSE, warning=FALSE}
+new <- data.frame(matrix(ncol=9, nrow=8))
+colnames(new)<- c("Cities", "Region", "Count of Postal Codes", " 2005", " 2019", "p-value Park", "2005", "2019", "p-value Forest")
+
+new$Cities <- c("Toronto", "Toronto", "Ottawa", "Ottawa", "Hamilton", "Hamilton", "Waterloo", "Waterloo")
+new$Region <- c("Urban", "Rural", "Urban", "Rural", "Urban", "Rural", "Urban", "Rural")
+
+new$`Count of Postal Codes`<- c(count(toronto_2019_urban_park), count(toronto_2019_rural_park), count(ottawa_2019_urban_park), count(ottawa_2019_rural_park), count(hamilton_2019_urban_park), count(hamilton_2019_rural_park), count(waterloo_2019_urban_park), count(waterloo_2019_rural_park))
+
+new$` 2005`<-c(paste0(t_05_u_p_m, " (", t_05_u_p_iqr, ")"), paste0(t_05_r_p_m, " (", t_05_r_p_iqr, ")"), paste0(o_05_u_p_m, " (", o_05_u_p_iqr, ")"), paste0(o_05_r_p_m, " (", o_05_r_p_iqr, ")"),
+                     paste0(h_05_u_p_m, " (", h_05_u_p_iqr, ")"), paste0(h_05_r_p_m, " (", h_05_r_p_iqr, ")"),
+                     paste0(w_05_u_p_m, " (", w_05_u_p_iqr, ")"), paste0(w_05_r_p_m, " (", w_05_r_p_iqr, ")"))
+
+new$` 2019`<-c(paste0(t_19_u_p_m, " (", t_19_u_p_iqr, ")"), paste0(t_19_r_p_m, " (", t_19_r_p_iqr, ")"), paste0(o_19_u_p_m, " (", o_19_u_p_iqr, ")"), paste0(o_19_r_p_m, " (", o_19_r_p_iqr, ")"),
+                     paste0(h_19_u_p_m, " (", h_19_u_p_iqr, ")"), paste0(h_19_r_p_m, " (", h_19_r_p_iqr, ")"),
+                     paste0(w_19_u_p_m, " (", w_19_u_p_iqr, ")"), paste0(w_19_r_p_m, " (", w_19_r_p_iqr, ")"))
+new$`p-value Park`<- c(wilcox.test(toronto_2005_urban_park$travel_time, toronto_2019_urban_park$travel_time)$p.value,
+                       NA,
+                       wilcox.test(ottawa_2005_urban_park$travel_time, ottawa_2019_urban_park$travel_time)$p.value,
+                       NA,
+                       wilcox.test(hamilton_2005_urban_park$travel_time, hamilton_2019_urban_park$travel_time)$p.value,
+                       wilcox.test(hamilton_2005_rural_park$travel_time, hamilton_2019_rural_park$travel_time)$p.value,
+                       wilcox.test(waterloo_2005_urban_park$travel_time, waterloo_2019_urban_park$travel_time)$p.value,
+                       wilcox.test(waterloo_2005_rural_park$travel_time, waterloo_2019_rural_park$travel_time)$p.value)
+
+new$`2005`<-c(paste0(t_05_u_f_m, " (", t_05_u_f_iqr, ")"), paste0(t_05_r_f_m, " (", t_05_r_f_iqr, ")"), paste0(o_05_u_f_m, " (", o_05_u_f_iqr, ")"), paste0(o_05_r_f_m, " (", o_05_r_f_iqr, ")"),
+                     paste0(h_05_u_f_m, " (", h_05_u_f_iqr, ")"), paste0(h_05_r_f_m, " (", h_05_r_f_iqr, ")"),
+                     paste0(w_05_u_f_m, " (", w_05_u_f_iqr, ")"), paste0(w_05_r_f_m, " (", w_05_r_f_iqr, ")"))
+
+new$`2019`<-c(paste0(t_19_u_f_m, " (", t_19_u_f_iqr, ")"), paste0(t_19_r_f_m, " (", t_19_r_f_iqr, ")"), paste0(o_19_u_f_m, " (", o_19_u_f_iqr, ")"), paste0(o_19_r_f_m, " (", o_19_r_f_iqr, ")"),
+                     paste0(h_19_u_f_m, " (", h_19_u_f_iqr, ")"), paste0(h_19_r_f_m, " (", h_19_r_f_iqr, ")"),
+                     paste0(w_19_u_f_m, " (", w_19_u_f_iqr, ")"), paste0(w_19_r_f_m, " (", w_19_r_f_iqr, ")"))
+new$`p-value Forest`<- c(NA,
+                       NA,
+                       NA,
+                       NA,
+                       wilcox.test(hamilton_2005_urban_forest$travel_time, hamilton_2019_urban_forest$travel_time)$p.value,
+                       wilcox.test(hamilton_2005_rural_forest$travel_time, hamilton_2019_rural_forest$travel_time)$p.value,
+                       wilcox.test(waterloo_2005_urban_forest$travel_time, waterloo_2019_urban_forest$travel_time)$p.value,
+                       wilcox.test(waterloo_2005_rural_forest$travel_time, waterloo_2019_rural_forest$travel_time)$p.value)
+```
+
+```{r create ht table, echo=FALSE, message=FALSE}
+library(kableExtra)
+new %>% kable("latex", booktabs=T, caption = "The changes in the accessibility of park and greenness in cities of Ontario, 2005 and 2019") %>% kable_styling(latex_options = c("scale_down"))%>%
+  add_header_above(c(" " = 3, "Park" = 2, " " = 1, "Forest" = 2, " " =1)) %>%
+  column_spec(1, bold = T) %>%
+  collapse_rows(columns = 1:2, latex_hline = 'major', valign = "middle") %>%
+  footnote(general = c("The median (IQR) of the travel time to the nearest park or forest by driving.",
+           "IQR: Interquartile Range"))
+
+```

@@ -1,0 +1,467 @@
+---
+title: "ottawa_driving_forest"
+author: "Rachael Jaffe"
+date: "28/06/2020"
+output: html_document
+---
+
+```{r libraries}
+library(raster)
+library(tidyverse)
+```
+
+```{r merged_ct}
+total <- read.csv("tt_total.csv")
+
+sav_2017 <- haven::read_spss("dec2017.sav")
+sav_2017 <- as.data.frame(sav_2017)
+colskeep <- c(1, 11)
+sav_2017 <- sav_2017[,colskeep]
+colnames(sav_2017) <- c("postalcode", "CT")
+sav_2017_distinct <- sav_2017 %>% distinct(postalcode, .keep_all = T)
+merged_ct <- total %>% inner_join(sav_2017_distinct, by = "postalcode")
+#write.csv(merged_ct, "ct_total.csv")
+
+merged_ct <- total %>% inner_join(sav_2017, by = "postalcode")
+ottawa_ct <- shapefile("ottawa_ct.shp")
+#ottawa_ct@data <- ottawa_ct@data %>% mutate(CTNAME = as.numeric(CTNAME))
+ottawa_ct_vec <- ottawa_ct@data$CTNAME
+
+merged_ct_ottawa <- merged_ct %>% filter(CT %in% ottawa_ct_vec)
+merged_ct_ottawa <- merged_ct_ottawa %>% rename(CTNAME = CT)
+```
+
+```{r function high}
+#fonction signscanWMW
+signscanWMW <- function (X,Matcoord,niter)
+  
+{
+  
+  Matdist=as.matrix(dist(Matcoord,upper=TRUE))
+  nobs=length(X)
+  vecranks=rank(X)
+  concmax=-Inf
+  inddeb=0
+  indfin=0
+  
+  for (i in (1:nobs)) {
+    vecord=order(Matdist[,i])
+    for (j in (1:(nobs-1))) {
+      vecindin=vecord[1:j]
+      conc<-(sum(vecranks[vecindin])-(nobs+1)/2*j)/sqrt(j*(nobs-j)*(nobs+1)/12)
+      if (conc>concmax) {
+        concmax=conc
+        inddeb=i
+        indfin=j
+      }
+      
+    }
+  }
+  
+  
+  vecord=order(Matdist[,inddeb])
+  vecclus=vecord[1:indfin]
+  
+  pvalue=1
+  for (iter in 1:niter) {
+    print(iter)
+    concmaxsim<- -Inf
+    perm<-sample(nobs)
+    vecrankssim=vecranks[perm]
+    for (i in (1:nobs)) {
+      vecord=order(Matdist[,i])
+      for (j in (1:(nobs-1))) {
+        vecindin<-vecord[1:j]
+        concsim<-(sum(vecrankssim[vecindin])-(nobs+1)/2*j)/sqrt(j*(nobs-j)*(nobs+1)/12)
+
+        if (concsim>concmaxsim)
+        {
+          concmaxsim<-concsim
+        }
+      }
+    }
+    if (concmax<concmaxsim) pvalue<-pvalue+1
+    
+  }		
+  
+  pvalue<-pvalue/(niter+1)
+  
+  list(stat=concmax,vec=vecclus,pval=pvalue)
+  
+}
+
+
+```
+
+
+```{r function low}
+signscanWMW_low <- function (X,Matcoord,niter)
+  
+{
+  
+  Matdist=as.matrix(dist(Matcoord,upper=TRUE))
+  nobs=length(X)
+  vecranks=rank(X)
+  concmin=Inf
+  inddeb=0
+  indfin=0
+  
+  for (i in (1:nobs)) {
+    vecord=order(Matdist[,i])
+    for (j in (1:(nobs-1))) {
+      vecindin=vecord[1:j]
+      conc<-(sum(vecranks[vecindin])-(nobs+1)/2*j)/sqrt(j*(nobs-j)*(nobs+1)/12)
+      if (conc<concmin) {
+        concmin=conc
+        inddeb=i
+        indfin=j
+      }
+      
+    }
+  }
+  
+  
+  vecord=order(Matdist[,inddeb])
+  vecclus=vecord[1:indfin]
+  
+  pvalue=1
+  for (iter in 1:niter) {
+    print(iter)
+    concmaxsim<- -Inf
+    perm<-sample(nobs)
+    vecrankssim=vecranks[perm]
+    for (i in (1:nobs)) {
+      vecord=order(Matdist[,i])
+      for (j in (1:(nobs-1))) {
+        vecindin<-vecord[1:j]
+        concsim<-(sum(vecrankssim[vecindin])-(nobs+1)/2*j)/sqrt(j*(nobs-j)*(nobs+1)/12)
+
+        if (concsim<concmaxsim)
+        {
+          concmaxsim<-concsim
+        }
+      }
+    }
+    if (concmin<concmaxsim) pvalue<-pvalue+1
+    
+  }		
+  
+  pvalue<-pvalue/(niter+1)
+  
+  list(stat=concmin,vec=vecclus,pval=pvalue)
+  
+}
+```
+
+```{r 2019}
+merged_ct_ottawa_pw  <- merged_ct_ottawa %>% filter(year == 2019, mode=="driving", green_type == "forest")
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% mutate(travel_time = replace_na(travel_time, 240))
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% group_by(CTNAME) %>% mutate(ave_tt = mean(travel_time, na.rm=TRUE))
+
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% distinct(CTNAME, .keep_all = TRUE)
+
+merged_ct_ottawa_pw_2019 <- merged_ct_ottawa_pw
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw, by="CTNAME")
+
+pdf("ot_driving_forest_2019.pdf", width = 10, height = 8)
+spplot(combined, "ave_tt", main = list(label="Averge Travel Time to Drive to a forest (in Minutes) per Census Tract - 2019", cex = 1), col.regions = my.palette, cuts = 6)
+dev.off()
+
+nobs= length(combined@data$CTNAME)
+#localisations
+data <- merged_ct_ottawa_pw
+Matcoord=as.matrix(merged_ct_ottawa_pw)
+Matcoord=Matcoord[,7:8]
+#le vrai cluster
+X=data$ave_tt
+
+low_2019 <- signscanWMW_low(X,Matcoord,99)
+high_2019 <- signscanWMW(X,Matcoord,99)
+
+id_low = low_2019$vec
+vector_low = rep(c("low"), times = length(id_low))
+cluster_low <- id_low %>% bind_cols(vector_low)
+colnames(cluster_low) <- c("id", "cluster")
+Matcoord1 <- as.data.frame(Matcoord)
+Matcoord1 <- Matcoord1 %>% mutate(id =row_number())
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_low, by = "id")
+# Matcoord1 <- Matcoord1 %>% mutate(cluster = ifelse(is.na(cluster_low), "no", "low"))
+# Matcoord1 <- Matcoord1 %>% mutate(cluster = as.factor(cluster))
+
+id_high = high_2019$vec
+vector_high = rep(c("high"), times = length(id_high))
+cluster_high <- id_high %>% bind_cols(vector_high)
+colnames(cluster_high) <- c("id", "cluster_high")
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_high, by = "id")
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = case_when(
+  cluster == "low" ~ "low",
+  cluster_high == "high" ~ "high",
+  
+))
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = as.factor(cluster_final))
+# Matcoord1 %>% ggplot(aes(x=longitude, y=latitude, color=cluster)) +
+#   geom_point()
+
+merged_ct_ottawa_pw1 <- merged_ct_ottawa_pw %>% bind_cols(Matcoord1)
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw1, by="CTNAME")
+
+pdf("ot_driving_forest_MWscan_2019.pdf", width = 10, height = 8)
+spplot(combined, "cluster_final", col.regions = mycols)
+dev.off()
+summary_2019_df<- merged_ct_ottawa_pw1 %>% group_by(cluster_final) %>% summarize(average = mean(ave_tt))
+```
+
+```{r 2015}
+merged_ct_ottawa_pw  <- merged_ct_ottawa %>% filter(year == 2015, mode=="driving", green_type == "forest")
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% mutate(travel_time = replace_na(travel_time, 240))
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% group_by(CTNAME) %>% mutate(ave_tt = mean(travel_time, na.rm=TRUE))
+
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% distinct(CTNAME, .keep_all = TRUE)
+
+
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw, by="CTNAME")
+
+pdf("ot_driving_forest_2015.pdf", width = 10, height = 8)
+spplot(combined, "ave_tt", main = list(label="Averge Travel Time to Drive to a forest (in Minutes) per Census Tract - 2015", cex = 1), col.regions = my.palette, cuts = 6)
+dev.off()
+
+nobs= length(combined@data$CTNAME)
+#localisations
+data <- merged_ct_ottawa_pw
+Matcoord=as.matrix(merged_ct_ottawa_pw)
+Matcoord=Matcoord[,7:8]
+#le vrai cluster
+X=data$ave_tt
+
+low_2015 <- signscanWMW_low(X,Matcoord,99)
+high_2015 <- signscanWMW(X,Matcoord,99)
+
+id_low = low_2015$vec
+vector_low = rep(c("low"), times = length(id_low))
+cluster_low <- id_low %>% bind_cols(vector_low)
+colnames(cluster_low) <- c("id", "cluster")
+Matcoord1 <- as.data.frame(Matcoord)
+Matcoord1 <- Matcoord1 %>% mutate(id =row_number())
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_low, by = "id")
+# Matcoord1 <- Matcoord1 %>% mutate(cluster = ifelse(is.na(cluster_low), "no", "low"))
+# Matcoord1 <- Matcoord1 %>% mutate(cluster = as.factor(cluster))
+
+id_high = high_2015$vec
+vector_high = rep(c("high"), times = length(id_high))
+cluster_high <- id_high %>% bind_cols(vector_high)
+colnames(cluster_high) <- c("id", "cluster_high")
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_high, by = "id")
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = case_when(
+  cluster == "low" ~ "low",
+  cluster_high == "high" ~ "high",
+  
+))
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = as.factor(cluster_final))
+# Matcoord1 %>% ggplot(aes(x=longitude, y=latitude, color=cluster)) +
+#   geom_point()
+
+merged_ct_ottawa_pw1 <- merged_ct_ottawa_pw %>% bind_cols(Matcoord1)
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw1, by="CTNAME")
+
+pdf("ot_driving_forest_MWscan_2015.pdf", width = 10, height = 8)
+spplot(combined, "cluster_final", col.regions = mycols)
+dev.off()
+summary_2015_df<- merged_ct_ottawa_pw1 %>% group_by(cluster_final) %>% summarize(average = mean(ave_tt))
+```
+
+```{r 2010}
+merged_ct_ottawa_pw  <- merged_ct_ottawa %>% filter(year == 2010, mode=="driving", green_type == "forest")
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% mutate(travel_time = replace_na(travel_time, 240))
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% group_by(CTNAME) %>% mutate(ave_tt = mean(travel_time, na.rm=TRUE))
+
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% distinct(CTNAME, .keep_all = TRUE)
+
+
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw, by="CTNAME")
+
+pdf("ot_driving_forest_2010.pdf", width = 10, height = 8)
+spplot(combined, "ave_tt", main = list(label="Averge Travel Time to Drive to a forest (in Minutes) per Census Tract - 2010", cex = 1), col.regions = my.palette, cuts = 6)
+dev.off()
+
+nobs= length(combined@data$CTNAME)
+#localisations
+data <- merged_ct_ottawa_pw
+Matcoord=as.matrix(merged_ct_ottawa_pw)
+Matcoord=Matcoord[,7:8]
+#le vrai cluster
+X=data$ave_tt
+
+low_2010 <- signscanWMW_low(X,Matcoord,99)
+high_2010 <- signscanWMW(X,Matcoord,99)
+
+id_low = low_2010$vec
+vector_low = rep(c("low"), times = length(id_low))
+cluster_low <- id_low %>% bind_cols(vector_low)
+colnames(cluster_low) <- c("id", "cluster")
+Matcoord1 <- as.data.frame(Matcoord)
+Matcoord1 <- Matcoord1 %>% mutate(id =row_number())
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_low, by = "id")
+
+id_high = high_2010$vec
+vector_high = rep(c("high"), times = length(id_high))
+cluster_high <- id_high %>% bind_cols(vector_high)
+colnames(cluster_high) <- c("id", "cluster_high")
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_high, by = "id")
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = case_when(
+  cluster == "low" ~ "low",
+  cluster_high == "high" ~ "high",
+  
+))
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = as.factor(cluster_final))
+
+merged_ct_ottawa_pw1 <- merged_ct_ottawa_pw %>% bind_cols(Matcoord1)
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw1, by="CTNAME")
+
+pdf("ot_driving_forest_MWscan_2010.pdf", width = 10, height = 8)
+spplot(combined, "cluster_final", col.regions = mycols)
+dev.off()
+summary_2010_df<- merged_ct_ottawa_pw1 %>% group_by(cluster_final) %>% summarize(average = mean(ave_tt))
+```
+
+```{r 2005}
+merged_ct_ottawa_pw  <- merged_ct_ottawa %>% filter(year == 2005, mode=="driving", green_type == "forest")
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% mutate(travel_time = replace_na(travel_time, 240))
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% group_by(CTNAME) %>% mutate(ave_tt = mean(travel_time, na.rm=TRUE))
+
+merged_ct_ottawa_pw <- merged_ct_ottawa_pw %>% distinct(CTNAME, .keep_all = TRUE)
+
+
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw, by="CTNAME")
+
+pdf("ot_driving_forest_2005.pdf", width = 10, height = 8)
+spplot(combined, "ave_tt", main = list(label="Averge Travel Time to Drive to a forest (in Minutes) per Census Tract - 2005", cex = 1), col.regions = my.palette, cuts = 6)
+dev.off()
+
+nobs= length(combined@data$CTNAME)
+#localisations
+data <- merged_ct_ottawa_pw
+Matcoord=as.matrix(merged_ct_ottawa_pw)
+Matcoord=Matcoord[,7:8]
+#le vrai cluster
+X=data$ave_tt
+
+low_2005 <- signscanWMW_low(X,Matcoord,99)
+high_2005 <- signscanWMW(X,Matcoord,99)
+
+id_low = low_2005$vec
+vector_low = rep(c("low"), times = length(id_low))
+cluster_low <- id_low %>% bind_cols(vector_low)
+colnames(cluster_low) <- c("id", "cluster")
+Matcoord1 <- as.data.frame(Matcoord)
+Matcoord1 <- Matcoord1 %>% mutate(id =row_number())
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_low, by = "id")
+# Matcoord1 <- Matcoord1 %>% mutate(cluster = ifelse(is.na(cluster_low), "no", "low"))
+# Matcoord1 <- Matcoord1 %>% mutate(cluster = as.factor(cluster))
+
+id_high = high_2005$vec
+vector_high = rep(c("high"), times = length(id_high))
+cluster_high <- id_high %>% bind_cols(vector_high)
+colnames(cluster_high) <- c("id", "cluster_high")
+
+Matcoord1 <- Matcoord1 %>% full_join(cluster_high, by = "id")
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = case_when(
+  cluster == "low" ~ "low",
+  cluster_high == "high" ~ "high",
+  
+))
+Matcoord1 <- Matcoord1 %>% mutate(cluster_final = as.factor(cluster_final))
+
+merged_ct_ottawa_pw1 <- merged_ct_ottawa_pw %>% bind_cols(Matcoord1)
+combined <- sp::merge(ottawa_ct, merged_ct_ottawa_pw1, by="CTNAME")
+
+pdf("ot_driving_forest_MWscan_2005.pdf", width = 10, height = 8)
+spplot(combined, "cluster_final", col.regions = mycols)
+dev.off()
+summary_2005_df<- merged_ct_ottawa_pw1 %>% group_by(cluster_final) %>% summarize(average = mean(ave_tt))
+```
+
+
+```{r}
+all_years_clusters <- data.frame()
+
+id_2005_high = high_2005$vec
+vector_2005 = rep(c("high"), times = length(id_2005_high))
+cluster_2005_high <- id_2005_high %>% bind_cols(vector_2005)
+colnames(cluster_2005_high) <- c("rank", "cluster")
+id_2005_low = low_2005$vec
+vector_2005 = rep(c("low"), times = length(id_2005_low))
+cluster_2005_low <- id_2005_low  %>% bind_cols(vector_2005)
+colnames(cluster_2005_low) <- c("rank", "cluster")
+
+id_2010_high = high_2010$vec
+vector_2010 = rep(c("high"), times = length(id_2010_high))
+cluster_2010_high <- id_2010_high %>% bind_cols(vector_2010)
+colnames(cluster_2010_high) <- c("rank", "cluster")
+id_2010_low = low_2010$vec
+vector_2010 = rep(c("low"), times = length(id_2010_low))
+cluster_2010_low <- id_2010_low  %>% bind_cols(vector_2010)
+colnames(cluster_2010_low) <- c("rank", "cluster")
+
+id_2015_high = high_2015$vec
+vector_2015 = rep(c("high"), times = length(id_2015_high))
+cluster_2015_high <- id_2015_high %>% bind_cols(vector_2015)
+colnames(cluster_2015_high) <- c("rank", "cluster")
+id_2015_low = low_2015$vec
+vector_2015 = rep(c("low"), times = length(id_2015_low))
+cluster_2015_low <- id_2015_low  %>% bind_cols(vector_2015)
+colnames(cluster_2015_low) <- c("rank", "cluster")
+
+id_2019_high = high_2019$vec
+vector_2019 = rep(c("high"), times = length(id_2019_high))
+cluster_2019_high <- id_2019_high %>% bind_cols(vector_2019)
+colnames(cluster_2019_high) <- c("rank", "cluster")
+id_2019_low = low_2019$vec
+vector_2019 = rep(c("low"), times = length(id_2019_low))
+cluster_2019_low <- id_2019_low  %>% bind_cols(vector_2019)
+colnames(cluster_2019_low) <- c("rank", "cluster")
+
+allyears_low <- cluster_2005_low %>% bind_rows(cluster_2010_low)
+allyears_low <- allyears_low %>% bind_rows(cluster_2015_low)
+allyears_low <- allyears_low %>% bind_rows(cluster_2019_low)
+
+
+allyears_high <- cluster_2005_high %>% bind_rows(cluster_2010_high)
+allyears_high <- allyears_high %>% bind_rows(cluster_2015_high)
+allyears_high <- allyears_high %>% bind_rows(cluster_2019_high)
+
+
+allyears_lowfreq <- allyears_low %>% group_by(rank) %>% mutate(freq = n())
+allyears_highfreq <- allyears_high %>% group_by(rank) %>% mutate(freq = n())
+allyears_lowfreq <- allyears_lowfreq %>% filter(freq == 4)
+allyears_highfreq <- allyears_highfreq %>% filter(freq == 4)
+allyears_lowfreq <- allyears_lowfreq %>% distinct()
+allyears_highfreq <- allyears_highfreq %>% distinct()
+
+all_years_clusters <- allyears_highfreq %>% bind_rows(allyears_lowfreq)
+
+long_lat <- merged_ct_ottawa %>% filter(mode=="driving", green_type == "forest")
+long_lat <- long_lat %>% distinct(CTNAME, .keep_all = TRUE)
+
+Matcoord_all <- long_lat[,7:8]
+Matcoord_all <- Matcoord_all %>% mutate(id=row_number())
+
+all_years_clusters <- all_years_clusters %>% rename(id = rank)
+Matcoord_all <- Matcoord_all %>% full_join(all_years_clusters, by = "id")
+Matcoord_all <- Matcoord_all %>% mutate(cluster = as.factor(cluster))
+Matcoord_all1 <- Matcoord_all %>% bind_cols(long_lat)
+
+combined_all <- sp::merge(ottawa_ct, Matcoord_all1)
+
+pdf("ot_driving_forest_MWscan_allyears.pdf", width = 10, height = 8)
+spplot(combined_all, "cluster", col.regions = mycols)
+dev.off()
+
+```
+

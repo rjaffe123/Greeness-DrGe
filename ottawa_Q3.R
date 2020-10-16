@@ -82,7 +82,7 @@ dev.off()
 
 ##Walking
 #Park
-tt_2019_park <- tt_log_2019 %>% filter(year == 2019 & mode == "walking" & green_type == "park")
+tt_2019_park <- ottawa %>% filter(year == 2019 & mode == "walking" & green_type == "park")
 lonlat <- cbind(tt_2019_park$longitude, tt_2019_park$latitude)
 sp.case <- SpatialPoints(lonlat,CRS("+proj=longlat +datum=WGS84"))
 newcrs <- proj4string(shp.ottawa)
